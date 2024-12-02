@@ -21,9 +21,22 @@ import org.apache.avro.Schema;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.util.ClassUtils;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /** {@link org.apache.avro.io.DatumReader DatumReader} for generated Java classes. */
 public class SpecificDatumReader<T> extends GenericDatumReader<T> {
+
+  public static final String[] SERIALIZABLE_PACKAGES;
+
+  static {
+    SERIALIZABLE_PACKAGES = System.getProperty("org.apache.avro.SERIALIZABLE_PACKAGES",
+        "java.lang,java.math,java.io,java.net,org.apache.avro.reflect").split(",");
+  }
+
+  private final List<String> trustedPackages = new ArrayList<String>();
+
   public SpecificDatumReader() {
     this(null, null, SpecificData.get());
   }
@@ -49,6 +62,7 @@ public class SpecificDatumReader<T> extends GenericDatumReader<T> {
   public SpecificDatumReader(Schema writer, Schema reader,
                              SpecificData data) {
     super(writer, reader, data);
+    trustedPackages.addAll(Arrays.asList(SERIALIZABLE_PACKAGES));
   }
 
   /** Construct given a {@link SpecificData}. */
@@ -92,10 +106,42 @@ public class SpecificDatumReader<T> extends GenericDatumReader<T> {
     String name = schema.getProp(prop);
     if (name == null) return null;
     try {
-      return ClassUtils.forName(getData().getClassLoader(), name);
+      // return ClassUtils.forName(getData().getClassLoader(), name);
+      Class clazz = ClassUtils.forName(getData().getClassLoader(), name);
+      checkSecurity(clazz);
+      return clazz;
     } catch (ClassNotFoundException e) {
       throw new AvroRuntimeException(e);
     }
+  }
+
+  private boolean trustAllPackages() {
+    return (trustedPackages.size() == 1 && "*".equals(trustedPackages.get(0)));
+  }
+
+  private void checkSecurity(Class clazz) throws ClassNotFoundException {
+    if (trustAllPackages() || clazz.isPrimitive()) {
+      return;
+    }
+
+    boolean found = false;
+    Package thePackage = clazz.getPackage();
+    if (thePackage != null) {
+      for (String trustedPackage : getTrustedPackages()) {
+        if (thePackage.getName().equals(trustedPackage) || thePackage.getName().startsWith(trustedPackage + ".")) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        throw new SecurityException("Forbidden " + clazz
+            + "! This class is not trusted to be included in Avro schema using java-class. Please set org.apache.avro.SERIALIZABLE_PACKAGES system property with the packages you trust.");
+      }
+    }
+  }
+
+  public final List<String> getTrustedPackages() {
+    return trustedPackages;
   }
 
 }
