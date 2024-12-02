@@ -21,6 +21,8 @@ import java.io.UnsupportedEncodingException;
 
 import junit.framework.Assert;
 
+import org.apache.avro.SystemLimitException;
+ 
 import org.junit.Test;
 
 import static junit.framework.Assert.assertSame;
